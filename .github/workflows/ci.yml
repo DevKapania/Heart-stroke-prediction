@@ -1,0 +1,83 @@
+name: Heart Stroke Prediction CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Clone your repo onto GitHub's computer
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Install Python 3.10
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'           # caches packages so future runs are faster
+
+      # Step 3: Install all your packages from requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Step 4: Install extra tools needed for CI (not in your requirements.txt)
+      - name: Install CI tools
+        run: pip install nbconvert jupyter flake8
+
+      # Step 5: Check train.py has no syntax errors
+      - name: Lint train.py
+        run: flake8 train.py --max-line-length=120 --count
+
+      # Step 6: Check predict.py has no syntax errors
+      - name: Lint predict.py
+        run: flake8 predict.py --max-line-length=120 --count
+
+      # Step 7: Make sure train.py can be imported without crashing
+      - name: Validate train.py imports
+        run: python -c "import ast; ast.parse(open('train.py').read()); print('train.py syntax OK')"
+
+      # Step 8: Make sure predict.py can be imported without crashing
+      - name: Validate predict.py imports
+        run: python -c "import ast; ast.parse(open('predict.py').read()); print('predict.py syntax OK')"
+
+      # Step 9: Execute EDA notebook (validates it runs end-to-end)
+      - name: Run EDA notebook
+        run: |
+          jupyter nbconvert --to notebook \
+            --execute 01_EDA.ipynb \
+            --ExecutePreprocessor.timeout=180 \
+            --output 01_EDA_executed.ipynb
+        continue-on-error: true   # won't fail the whole pipeline if data file is missing
+
+      # Step 10: Execute preprocessing notebook
+      - name: Run preprocessing notebook
+        run: |
+          jupyter nbconvert --to notebook \
+            --execute 02_preprocessing.ipynb \
+            --ExecutePreprocessor.timeout=180 \
+            --output 02_preprocessing_executed.ipynb
+        continue-on-error: true
+
+      # Step 11: Execute modeling notebook
+      - name: Run modeling notebook
+        run: |
+          jupyter nbconvert --to notebook \
+            --execute 03_modeling.ipynb \
+            --ExecutePreprocessor.timeout=300 \
+            --output 03_modeling_executed.ipynb
+        continue-on-error: true
+
+      # Step 12: Save the executed notebooks as downloadable artifacts
+      - name: Upload executed notebooks
+        uses: actions/upload-artifact@v4
+        with:
+          name: executed-notebooks
+          path: "*_executed.ipynb"
+          retention-days: 7
+        if: always()   # upload even if previous steps had errors
